@@ -6,7 +6,7 @@ sending and receiving packets, and streaming data between radios.
 The rf24 class implements the basic radio access for configuration, status, 
 sending and receiving packets.
 
-The RFStream class implements a full Stream class on using an rf24 instance.
+The RFStream class implements a full Stream class using an rf24 instance.
 
 Example code to setup and use the hardware serial interface:
 
