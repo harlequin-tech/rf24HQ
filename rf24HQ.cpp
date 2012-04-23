@@ -50,6 +50,7 @@ rf24::rf24(uint8_t cePinSet, uint8_t csnPinSet, uint8_t channelSet, uint8_t size
 {
     acked = false;
     sending = false;
+    autoAck = false;
     channel = channelSet;
     packetSize = size;
     cePin = cePinSet;
@@ -245,8 +246,14 @@ void rf24::setRxAddr(uint8_t id, const void *addr)
  */
 void rf24::setTxAddr(const void *addr)
 {
-    writeReg(RX_ADDR_P0, (const uint8_t *)addr, RF24_ADDR_LEN);
     writeReg(TX_ADDR, (const uint8_t *)addr, RF24_ADDR_LEN);
+    if (autoAck) {
+	/* 
+	 * RX_ADDR_P0 is used for the auto ack feature, and 
+	 * needs to be the same as the TX address 
+	 */
+	writeReg(RX_ADDR_P0, (const uint8_t *)addr, RF24_ADDR_LEN);
+    }
 }
 
 /** Read the value of a multi-byte register.
@@ -439,6 +446,8 @@ uint8_t rf24::getChannel(void)
  */
 void rf24::enableAck(uint16_t delay, uint8_t retry)
 {
+    uint8_t addr[RF24_ADDR_LEN];
+
     if (retry > 15) {
 	retry = 15;
     }
@@ -452,6 +461,14 @@ void rf24::enableAck(uint16_t delay, uint8_t retry)
 
     writeReg(EN_AA, 0x3F); /* enable auto-ack */
     writeReg(SETUP_RETR, (delay << 4) | (retry & 0x0F));
+
+    /* 
+     * RX_ADDR_P0 is used for the auto ack feature, and 
+     * needs to be the same as the TX address 
+     */
+    readReg(TX_ADDR, addr, RF24_ADDR_LEN);
+    writeReg(RX_ADDR_P0, addr, RF24_ADDR_LEN);
+    autoAck = true;
 }
 
 /** Disable the auto-ack feature */
@@ -459,6 +476,7 @@ void rf24::disableAck()
 {
     writeReg(EN_AA, 0);
     writeReg(SETUP_RETR, 0);
+    autoAck = false;
 }
 
 boolean rf24::sendAndRead(void *msg, uint8_t size, uint32_t timeout)

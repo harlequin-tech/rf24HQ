@@ -38,7 +38,6 @@
 #define RF24_RPD         0x09
 
 #define RF24_ADDR_LEN 5
-
 #define RF24_MAX_SIZE 32	/* Maximum message payload size */
 
 class RFDebug : public Print {
@@ -52,7 +51,7 @@ private:
 
 class rf24 {
 public:
-    rf24(uint8_t cePin=8, uint8_t csnPin=9, uint8_t channel=80, uint8_t payload=16);
+    rf24(uint8_t cePin=8, uint8_t csnPin=9, uint8_t channel=80, uint8_t payload=RF24_MAX_SIZE);
     
     boolean begin(Print *debugPrint=NULL);
 
@@ -115,6 +114,7 @@ public:
     uint8_t packetSize;
     boolean acked;
     boolean sending;
+    boolean autoAck;	/* Auto-ack feature enabled */
 
     void (*handler)(void *msg, uint8_t size);
     void *handlerMsg;
