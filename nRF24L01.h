@@ -76,6 +76,8 @@
 #define ARC         0
 #define PLL_LOCK    4
 #define RF_DR       3
+#define RF_DR_LOW   5
+#define RF_DR_HIGH  3
 #define RF_PWR      1
 #define LNA_HCURR   0        
 #define RX_DR       6
