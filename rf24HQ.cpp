@@ -174,6 +174,10 @@ void rf24::setSpeed(uint8_t setting)
 
 uint8_t rf24::getSpeed()
 {
+    uint8_t rfset;
+
+    rfset = readReg(RF_SETUP);
+    rfspeed = ((rfset >> (RF_DR_LOW-1)) & 0x02) | ((rfset >> RF_DR_HIGH) & 0x01);
     return(rfspeed);
 }
 
@@ -203,7 +207,7 @@ void rf24::setPower(uint8_t setting)
     uint8_t rfset;
 
     rfset = readReg(RF_SETUP);
-    if (setting > 0x03) {
+    if (setting > 0x03) {  // User not providing a #defined constant like they should...
         rfpower = RF24_POWER_MAX;
     } else {
         rfpower = setting;
@@ -216,6 +220,12 @@ void rf24::setPower(uint8_t setting)
 
 uint8_t rf24::getPower()
 {
+    uint8_t rfset;
+
+    rfset = readReg(RF_SETUP);
+    rfset &= 0x06;
+    rfset >>= 1;
+    rfpower = rfset;
     return(rfpower);
 }
 
