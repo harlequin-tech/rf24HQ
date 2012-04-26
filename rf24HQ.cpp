@@ -99,6 +99,8 @@ boolean rf24::begin(Print *debugPrint)
 
     setChannel(channel);
     setPacketSize(packetSize);
+    setSpeed(rfspeed);
+    setPower(rfpower);
 
     /* Make sure the module is working */
     if ((getChannel() != channel) || (readReg(RX_PW_P0) != packetSize)) {
