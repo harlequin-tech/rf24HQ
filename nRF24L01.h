@@ -1,5 +1,6 @@
 /*
     Copyright (c) 2007 Stefan Engelke <mbox@stefanengelke.de>
+    Some parts copyright (c) 2012 Eric Brundick <spirilis [at] linux dot com>
 
     Permission is hereby granted, free of charge, to any person 
     obtaining a copy of this software and associated documentation 

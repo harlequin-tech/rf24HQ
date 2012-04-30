@@ -1,6 +1,7 @@
 /*-
  * Copyright (c) 2012 Darran Hunt (darran [at] hunt dot net dot nz)
  * All rights reserved.
+ * Some parts copyright (c) 2012 Eric Brundick (spirilis [at] linux dot com)
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
