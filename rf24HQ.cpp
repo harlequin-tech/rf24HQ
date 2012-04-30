@@ -1,6 +1,7 @@
 /*-
  * Copyright (c) 2012 Darran Hunt (darran [at] hunt dot net dot nz)
  * All rights reserved.
+ * Some parts copyright (c) 2012 Eric Brundick (spirilis [at] linux dot com)
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -55,6 +56,9 @@ rf24::rf24(uint8_t cePinSet, uint8_t csnPinSet, uint8_t channelSet, uint8_t size
     packetSize = size;
     cePin = cePinSet;
     csnPin = csnPinSet;
+    cfg_crc = (1<<EN_CRC);  // Defaults to CRC enabled, 8-bits only.
+    rfpower = RF24_POWER_MINUS6DBM;
+    rfspeed = RF24_SPEED_1MBPS;
 }
 
 void rf24::chipEnable()
@@ -96,6 +100,8 @@ boolean rf24::begin(Print *debugPrint)
 
     setChannel(channel);
     setPacketSize(packetSize);
+    setSpeed(rfspeed);
+    setPower(rfpower);
 
     /* Make sure the module is working */
     if ((getChannel() != channel) || (readReg(RX_PW_P0) != packetSize)) {
@@ -127,6 +133,128 @@ void rf24::setPacketSize(uint8_t size)
 }
 	
 
+void rf24::setCRC8()
+{
+    cfg_crc &= ~(1 << CRCO);
+}
+
+void rf24::setCRC16()
+{
+    cfg_crc = 1 << CRCO;
+}
+
+void rf24::setCRCOn()
+{
+    cfg_crc |= 1 << EN_CRC;
+}
+
+void rf24::setCRCOff()
+{
+    cfg_crc &= ~(1 << EN_CRC);
+}
+
+void rf24::setSpeed(uint8_t setting)
+{
+    uint8_t rfset;
+
+    rfset = readReg(RF_SETUP);
+    if (setting > 2) {  // Erroneous value, assume the user means maximum speed?
+        rfspeed = RF24_SPEED_2MBPS;
+    } else {
+        rfspeed = setting;
+    }
+    rfset &= ~( (1<<RF_DR_HIGH) | (1<<RF_DR_LOW) );
+    if (rfspeed == RF24_SPEED_250KBPS) {
+        rfset |= 1 << RF_DR_LOW;
+    } else {
+        rfset |= (rfspeed & 0x01) << RF_DR_HIGH;
+    }
+
+    writeReg(RF_SETUP, rfset);
+}
+
+uint8_t rf24::getSpeed()
+{
+    uint8_t rfset;
+
+    rfset = readReg(RF_SETUP);
+    rfspeed = ((rfset >> (RF_DR_LOW-1)) & 0x02) | ((rfset >> RF_DR_HIGH) & 0x01);
+    return(rfspeed);
+}
+
+char* rf24::getSpeedString(char *buf)
+{
+    switch(rfspeed) {
+      case RF24_SPEED_250KBPS:
+          strcpy_P(buf, PSTR("250Kbps"));
+          break;
+
+      case RF24_SPEED_1MBPS:
+          strcpy_P(buf, PSTR("1Mbps"));
+          break;
+
+      case RF24_SPEED_2MBPS:
+          strcpy_P(buf, PSTR("2Mbps"));
+          break;
+
+      default:
+          strcpy_P(buf, PSTR("Unknown"));
+    }
+    return(buf);
+}
+
+void rf24::setPower(uint8_t setting)
+{
+    uint8_t rfset;
+
+    rfset = readReg(RF_SETUP);
+    if (setting > 0x03) {  // User not providing a #defined constant like they should...
+        rfpower = RF24_POWER_MAX;
+    } else {
+        rfpower = setting;
+    }
+    rfset &= ~(0x06);  // Clear bit 2, 1
+    rfset |= ((rfpower & 0x03) << 1);  // Copy rfpower in place.
+
+    writeReg(RF_SETUP, rfset);
+}
+
+uint8_t rf24::getPower()
+{
+    uint8_t rfset;
+
+    rfset = readReg(RF_SETUP);
+    rfset &= 0x06;
+    rfset >>= 1;
+    rfpower = rfset;
+    return(rfpower);
+}
+
+char* rf24::getPowerString(char *buf)
+{
+    switch(rfpower) {
+        case RF24_POWER_0DBM:
+            strcpy_P(buf, PSTR("0dBm"));
+            break;
+
+        case RF24_POWER_MINUS6DBM:
+            strcpy_P(buf, PSTR("-6dBm"));
+            break;
+
+        case RF24_POWER_MINUS12DBM:
+            strcpy_P(buf, PSTR("-12dBm"));
+            break;
+
+        case RF24_POWER_MINUS18DBM:
+            strcpy_P(buf, PSTR("-18dBm"));
+            break;
+
+        default:
+            strcpy_P(buf, PSTR("Unknown"));
+    }
+    return(buf);
+}
+
 uint8_t rf24::transfer(uint8_t data)
 {
     return SPI.transfer(data);
@@ -146,6 +274,14 @@ void rf24::tx(const void *data, uint8_t len, uint8_t max)
 	} else {
 	    transfer(0);
 	}
+    }
+}
+
+/** Send register data - LSBFirst */
+void rf24::txlsbfirst(const void *data, uint8_t len)
+{
+    for (uint8_t ind=len-1; ind >= 0; ind--) {
+      transfer(((uint8_t *)data)[ind]);
     }
 }
 
@@ -193,7 +329,7 @@ void rf24::txrx(uint8_t *txdata, uint8_t *rxdata, uint8_t len, uint8_t max)
 /** Set config register */
 void rf24::setConfig(uint8_t value)
 {
-    writeReg(CONFIG, (1<<EN_CRC) | value);
+    writeReg(CONFIG, cfg_crc | value);
 }
 
 /** Enable receive (disables transmit) */
@@ -215,6 +351,25 @@ void rf24::flushRx()
 void rf24::enableTx()
 {
     setConfig(1<<PWR_UP);
+}
+
+/** Report # of retransmits since the last sent packet */
+uint8_t rf24::getRetransmits()
+{
+    return ( (readReg(OBSERVE_TX) >> ARC_CNT) & 0x0F );
+}
+
+uint8_t rf24::getFailedSends()
+{
+    return ( (readReg(OBSERVE_TX) >> PLOS_CNT) & 0x0F );
+}
+
+void rf24::resetFailedSends()
+{
+    uint8_t chan;
+
+    chan = getChannel();
+    setChannel(chan);  // According to the datasheet, PLOS_CNT is only reset by writing to RF_CH!
 }
 
 /** Disable transmit and receive. 900nA current draw. */
@@ -310,7 +465,7 @@ void rf24::writeReg(uint8_t reg, const void *value, uint8_t size)
 {
     chipSelect();
     transfer(W_REGISTER | (REGISTER_MASK & reg));
-    tx(value,size);
+    txlsbfirst(value,size);  // Looks like all multi-byte registers require transmitting the LSB first...
     chipDeselect();
 }
 
@@ -388,6 +543,17 @@ void rf24::read(void *data, uint8_t size)
     writeReg(STATUS, 1<<RX_DR);
 }
 
+/** See if the device is contactable and registers readable
+ * Address Width cannot be 0x00, only 0x01-0x03
+ */
+boolean rf24::isAlive()
+{
+    byte aw;
+
+    aw = readReg(SETUP_AW);
+    return((aw & 0xFC) == 0x00 && (aw & 0x03) != 0x00);
+}
+
 /** See if the Rx FIFO has data available */
 boolean rf24::rxFifoAvailable()
 {
@@ -451,10 +617,7 @@ void rf24::enableAck(uint16_t delay, uint8_t retry)
     if (retry > 15) {
 	retry = 15;
     }
-    if (delay < 1) {
-	delay = 1;
-    }
-    delay = (delay + 249) / 250;
+    delay = (_scrubDelay(delay) + 249) / 250;
     if (delay > 15) {
 	delay = 15; /* Max 4000us */
     }
@@ -469,6 +632,48 @@ void rf24::enableAck(uint16_t delay, uint8_t retry)
     readReg(TX_ADDR, addr, RF24_ADDR_LEN);
     writeReg(RX_ADDR_P0, addr, RF24_ADDR_LEN);
     autoAck = true;
+}
+
+/** Private function to clamp the delay to sensible values based on the nRF24L01+'s datasheet
+ *  stated limits.
+ */
+uint16_t rf24::_scrubDelay(uint16_t delay)
+{
+    /* Per datasheet for nRF24L01+, page 34 (section 7.4.2) */
+    switch (rfspeed) {
+        case RF24_SPEED_250KBPS:
+            if (packetSize <= 8 && delay < 750) {
+                delay=750;
+                break;
+            }
+            if (packetSize <= 16 && delay < 1000) {
+                delay=1000;
+                break;
+            }
+            if (packetSize <= 24 && delay < 1250) {
+                delay=1250;
+                break;
+            }
+            if (delay < 1500) {
+                delay=1500;
+                break;
+            }
+            break;
+
+        case RF24_SPEED_1MBPS:
+            if (packetSize <= 5 && delay < 250) {
+                delay=250;
+            }
+            break;
+
+        case RF24_SPEED_2MBPS:
+            if (packetSize <= 15 && delay < 250) {
+                delay=250;
+            }
+            break;
+    }
+
+    return(delay);
 }
 
 /** Disable the auto-ack feature */
