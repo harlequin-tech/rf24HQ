@@ -88,16 +88,6 @@ void rf24::chipDeselect()
 */
 boolean rf24::begin(uint32_t dataRate, Print *debugPrint)
 {
-    uint8_t speed;
-
-    if (dataRate >= 2000000) {
-	speed = RF24_SPEED_2MBPS;
-    } else if (dataRate >= 1000000) {
-	speed = RF24_SPEED_1MBPS;
-    } else {
-      speed = RF24_SPEED_250KBPS;
-    }
-
     debug.begin(debugPrint);
 
     pinMode(cePin,OUTPUT);
@@ -115,8 +105,8 @@ boolean rf24::begin(uint32_t dataRate, Print *debugPrint)
 
     setChannel(channel);
     setPacketSize(packetSize);
-    setSpeed(speed);
-    setPower(rfpower);
+    setSpeed(dataRate);
+    setPowerReg(rfpower);
 
     /* Make sure the module is working */
     if ((getChannel() != channel) || (readReg(RX_PW_P0) != packetSize)) {
@@ -176,7 +166,35 @@ void rf24::setCRCOff()
     cfg_crc &= ~(1 << EN_CRC);
 }
 
-void rf24::setSpeed(uint8_t setting)
+uint8_t rf24::_convertSpeedToReg(uint32_t rfspd)
+{
+    if (rfspd >= 2000000UL)
+        return RF24_SPEED_2MBPS;
+    if (rfspd >= 1000000UL)
+        return RF24_SPEED_1MBPS;
+    return RF24_SPEED_250KBPS;
+}
+
+uint32_t rf24::_convertRegToSpeed(uint8_t rfspdreg)
+{
+    switch (rfspdreg) {
+        case RF24_SPEED_2MBPS:
+            return(2000000UL);
+        case RF24_SPEED_1MBPS:
+            return(1000000UL);
+        case RF24_SPEED_250KBPS:
+            return(250000UL);
+        default:
+            return(0);  // Unknown register value
+    }
+}
+
+void rf24::setSpeed(uint32_t rfspd)
+{
+    setSpeedReg(_convertSpeedToReg(rfspd));
+}
+
+void rf24::setSpeedReg(uint8_t setting)
 {
     uint8_t rfset;
 
@@ -196,7 +214,12 @@ void rf24::setSpeed(uint8_t setting)
     writeReg(RF_SETUP, rfset);
 }
 
-uint8_t rf24::getSpeed()
+uint32_t rf24::getSpeed()
+{
+    return (_convertRegToSpeed(getSpeedReg()));
+}
+
+uint8_t rf24::getSpeedReg()
 {
     uint8_t rfset;
 
@@ -207,6 +230,7 @@ uint8_t rf24::getSpeed()
 
 char* rf24::getSpeedString(char *buf)
 {
+    getSpeedReg();  // Sets the 'rfspeed' variable as a side-effect
     switch(rfspeed) {
       case RF24_SPEED_250KBPS:
           strcpy_P(buf, PSTR("250Kbps"));
@@ -226,7 +250,7 @@ char* rf24::getSpeedString(char *buf)
     return(buf);
 }
 
-void rf24::setPower(uint8_t setting)
+void rf24::setPowerReg(uint8_t setting)
 {
     uint8_t rfset;
 
@@ -242,7 +266,7 @@ void rf24::setPower(uint8_t setting)
     writeReg(RF_SETUP, rfset);
 }
 
-uint8_t rf24::getPower()
+uint8_t rf24::getPowerReg()
 {
     uint8_t rfset;
 
@@ -255,6 +279,7 @@ uint8_t rf24::getPower()
 
 char* rf24::getPowerString(char *buf)
 {
+    getPowerReg();  // Sets rfpower as a side-effect
     switch(rfpower) {
         case RF24_POWER_0DBM:
             strcpy_P(buf, PSTR("0dBm"));
