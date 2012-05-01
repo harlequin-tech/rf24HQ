@@ -1,6 +1,7 @@
 /*-
  * Copyright (c) 2012 Darran Hunt (darran [at] hunt dot net dot nz)
  * All rights reserved.
+ * Some parts copyright (c) 2012 Eric Brundick (spirilis [at] linux dot com)
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,6 +38,19 @@
 #define RF24_RF_SETUP    0x06
 #define RF24_RPD         0x09
 
+#define RF24_SPEED_250KBPS  0x02
+#define RF24_SPEED_1MBPS    0x00
+#define RF24_SPEED_2MBPS    0x01
+#define RF24_SPEED_MAX      RF24_SPEED_2MBPS
+#define RF24_SPEED_MIN      RF24_SPEED_250KBPS
+
+#define RF24_POWER_0DBM        0x03
+#define RF24_POWER_MINUS6DBM   0x02
+#define RF24_POWER_MINUS12DBM  0x01
+#define RF24_POWER_MINUS18DBM  0x00
+#define RF24_POWER_MAX         RF24_POWER_0DBM
+#define RF24_POWER_MIN         RF24_POWER_MINUS18DBM
+
 #define RF24_ADDR_LEN 5
 #define RF24_MAX_SIZE 32	/* Maximum message payload size */
 
@@ -66,6 +80,19 @@ public:
     uint8_t getPacketSize();
     void setChannel(uint8_t chan);
     uint8_t getChannel(void);
+    void setCRC8(void);
+    void setCRC16(void);
+    void setCRCOn(void);
+    void setCRCOff(void);
+    void setSpeed(uint8_t setting);
+    void setPower(uint8_t power);
+    uint8_t getSpeed(void);
+    char* getSpeedString(char *buf);
+    uint8_t getPower(void);
+    char* getPowerString(char *buf);
+    uint8_t getRetransmits(void);
+    uint8_t getFailedSends(void);
+    void resetFailedSends(void);
 
     void readReg(uint8_t reg, void *value, uint8_t size=1);
     uint8_t readReg(uint8_t reg);
@@ -82,6 +109,7 @@ public:
 
     uint8_t transfer(uint8_t data);
     void tx(const void *data, uint8_t len, uint8_t max=RF24_MAX_SIZE);
+    void txlsbfirst(const void *data, uint8_t len);
     void rx(void *data, uint8_t len, uint8_t max=RF24_MAX_SIZE);
     void txrx(uint8_t *data, uint8_t *in, uint8_t len, uint8_t max=RF24_MAX_SIZE);
 
@@ -102,6 +130,7 @@ public:
     void loop();
 
     void dumpRegisters(void);
+    boolean isAlive(void);
 
     uint8_t cePin;
     uint8_t csnPin;
@@ -109,12 +138,16 @@ public:
     RFDebug debug;	// debug print
 
     void setConfig(uint8_t value);
+    uint16_t _scrubDelay(uint16_t delay);
 
     uint8_t channel;
     uint8_t packetSize;
     boolean acked;
     boolean sending;
     boolean autoAck;	/* Auto-ack feature enabled */
+    uint8_t cfg_crc;  /* 2-byte CRC enabled */
+    uint8_t rfspeed;  /* Data rate; see RF24_SPEED_* defines */
+    uint8_t rfpower;  /* Transmitter power; see RF24_POWER_* defines */
 
     void (*handler)(void *msg, uint8_t size);
     void *handlerMsg;

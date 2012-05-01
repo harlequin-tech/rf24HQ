@@ -1,5 +1,6 @@
 /*
     Copyright (c) 2007 Stefan Engelke <mbox@stefanengelke.de>
+    Some parts copyright (c) 2012 Eric Brundick <spirilis [at] linux dot com>
 
     Permission is hereby granted, free of charge, to any person 
     obtaining a copy of this software and associated documentation 
@@ -76,6 +77,8 @@
 #define ARC         0
 #define PLL_LOCK    4
 #define RF_DR       3
+#define RF_DR_LOW   5
+#define RF_DR_HIGH  3
 #define RF_PWR      1
 #define LNA_HCURR   0        
 #define RX_DR       6
