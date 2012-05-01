@@ -81,8 +81,23 @@ void rf24::chipDeselect()
     digitalWrite(csnPin,HIGH);
 }
 
-boolean rf24::begin(Print *debugPrint)
+/**
+* Initialize the nRF24L01+.
+* @param dataRate the data rate to use. 250000, 1000000, or 2000000.
+* @param debugPrint optional debug print stream.
+*/
+boolean rf24::begin(uint32_t dataRate, Print *debugPrint)
 {
+    uint8_t speed;
+
+    if (dataRate >= 2000000) {
+	speed = RF24_SPEED_2MBPS;
+    } else if (dataRate >= 1000000) {
+	speed = RF24_SPEED_1MBPS;
+    } else {
+      speed = RF24_SPEED_250KBPS;
+    }
+
     debug.begin(debugPrint);
 
     pinMode(cePin,OUTPUT);
@@ -100,7 +115,7 @@ boolean rf24::begin(Print *debugPrint)
 
     setChannel(channel);
     setPacketSize(packetSize);
-    setSpeed(rfspeed);
+    setSpeed(speed);
     setPower(rfpower);
 
     /* Make sure the module is working */
@@ -114,6 +129,14 @@ boolean rf24::begin(Print *debugPrint)
     flushRx();
 
     return true;
+}
+
+/**
+* Initialize the nRF24L01+.
+*/
+boolean rf24::begin(Print *debugPrint)
+{
+    return begin(1000000, debugPrint);
 }
 
 uint8_t rf24::getPacketSize()

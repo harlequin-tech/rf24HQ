@@ -68,6 +68,7 @@ public:
     rf24(uint8_t cePin=8, uint8_t csnPin=9, uint8_t channel=80, uint8_t payload=RF24_MAX_SIZE);
     
     boolean begin(Print *debugPrint=NULL);
+    boolean begin(uint32_t dataRate, Print *debugPrint);
 
     void chipDisable();
     void chipEnable();
