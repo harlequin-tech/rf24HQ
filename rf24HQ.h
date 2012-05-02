@@ -85,11 +85,13 @@ public:
     void setCRC16(void);
     void setCRCOn(void);
     void setCRCOff(void);
-    void setSpeed(uint8_t setting);
-    void setPower(uint8_t power);
-    uint8_t getSpeed(void);
+    void setSpeed(uint32_t rfspd);
+    void setSpeedReg(uint8_t setting);
+    void setPowerReg(uint8_t power);
+    uint8_t getSpeedReg(void);
+    uint32_t getSpeed(void);
     char* getSpeedString(char *buf);
-    uint8_t getPower(void);
+    uint8_t getPowerReg(void);
     char* getPowerString(char *buf);
     uint8_t getRetransmits(void);
     uint8_t getFailedSends(void);
@@ -140,6 +142,8 @@ public:
 
     void setConfig(uint8_t value);
     uint16_t _scrubDelay(uint16_t delay);
+    uint8_t _convertSpeedToReg(uint32_t rfspd);
+    uint32_t _convertRegToSpeed(uint8_t rfspdreg);
 
     uint8_t channel;
     uint8_t packetSize;
