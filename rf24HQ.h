@@ -54,6 +54,14 @@
 #define RF24_ADDR_LEN 5
 #define RF24_MAX_SIZE 32	/* Maximum message payload size */
 
+#define RF24_STATE_NOTPRESENT  0x00
+#define RF24_STATE_POWERDOWN   0x01
+#define RF24_STATE_STANDBY_I   0x02
+#define RF24_STATE_STANDBY_II  0x03
+#define RF24_STATE_PTX         0x04
+#define RF24_STATE_PRX         0x05
+#define RF24_STATE_TEST        0x06
+
 class RFDebug : public Print {
 public:
     RFDebug();
@@ -70,21 +78,37 @@ public:
     boolean begin(Print *debugPrint=NULL);
     boolean begin(uint32_t dataRate, Print *debugPrint);
 
-    void chipDisable();
     void chipEnable();
+    void chipDisable();
     void chipSelect();
     void chipDeselect();
+
+    uint8_t transfer(uint8_t data);
+    void tx(const void *data, uint8_t len, uint8_t max=RF24_MAX_SIZE);
+    void txlsbfirst(const void *data, uint8_t len);
+    void rx(void *data, uint8_t len, uint8_t max=RF24_MAX_SIZE);
+    void txrx(uint8_t *data, uint8_t *in, uint8_t len, uint8_t max=RF24_MAX_SIZE);
+    void readReg(uint8_t reg, void *value, uint8_t size=1);
+    uint8_t readReg(uint8_t reg);
+    void writeReg(uint8_t reg);
+    void writeReg(uint8_t reg, uint8_t value);
+    void writeReg(uint8_t reg, const void *value, uint8_t size);
+
+    void setCRC8(void);
+    void setCRC16(void);
+    void setCRCOn(void);
+    void setCRCOff(void);
 
     void setRxAddr(uint8_t id, const void *addr);
     void setTxAddr(const void *addr);
     void setPacketSize(uint8_t size);
     uint8_t getPacketSize();
+    void enableAck(uint16_t delay, uint8_t retry);
+    void disableAck();
+    boolean gotAck();
+
     void setChannel(uint8_t chan);
     uint8_t getChannel(void);
-    void setCRC8(void);
-    void setCRC16(void);
-    void setCRCOn(void);
-    void setCRCOff(void);
     void setSpeed(uint32_t rfspd);
     void setSpeedReg(uint8_t setting);
     void setPowerReg(uint8_t power);
@@ -97,35 +121,23 @@ public:
     uint8_t getFailedSends(void);
     void resetFailedSends(void);
 
-    void readReg(uint8_t reg, void *value, uint8_t size=1);
-    uint8_t readReg(uint8_t reg);
-    void writeReg(uint8_t reg);
-    void writeReg(uint8_t reg, uint8_t value);
-    void writeReg(uint8_t reg, const void *value, uint8_t size);
+    uint8_t chipState();
+    void standby();
+    void enableTx();
+    void continualTx();
+    void enableRx();
+    void powerDown();
+    boolean isSending(bool enableReceive=true);
+
 
     void flushRx();
-    void enableRx();
-    void enableTx();
-    void powerDown();
-    void enableAck(uint16_t delay, uint8_t retry);
-    void disableAck();
-
-    uint8_t transfer(uint8_t data);
-    void tx(const void *data, uint8_t len, uint8_t max=RF24_MAX_SIZE);
-    void txlsbfirst(const void *data, uint8_t len);
-    void rx(void *data, uint8_t len, uint8_t max=RF24_MAX_SIZE);
-    void txrx(uint8_t *data, uint8_t *in, uint8_t len, uint8_t max=RF24_MAX_SIZE);
-
-    void send(void *data, uint8_t size=RF24_MAX_SIZE);
-    void read(void *data, uint8_t size=RF24_MAX_SIZE);
-    boolean sendAndRead(void *msg, uint8_t size=RF24_MAX_SIZE, uint32_t timeout=100);
-
+    void flushTx();
     boolean rxFifoAvailable();
     boolean available();
     boolean available(uint32_t timeout);
-    boolean isSending(bool enableReceive=true);
-    boolean gotAck();
-
+    void send(void *data, uint8_t size=RF24_MAX_SIZE);
+    void read(void *data, uint8_t size=RF24_MAX_SIZE);
+    boolean sendAndRead(void *msg, uint8_t size=RF24_MAX_SIZE, uint32_t timeout=100);
 
     void scan(uint8_t *chans, uint8_t start=0, uint8_t count=125, uint8_t depth=128);
     void setHandler(void (*rfHandler)(void *msg, uint8_t size), void *msg, uint8_t size);
@@ -134,6 +146,7 @@ public:
 
     void dumpRegisters(void);
     boolean isAlive(void);
+
 
     uint8_t cePin;
     uint8_t csnPin;
