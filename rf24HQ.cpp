@@ -98,7 +98,7 @@ boolean rf24::begin(uint32_t dataRate, Print *debugPrint)
 
     SPI.begin();
     SPI.setDataMode(SPI_MODE0);
-    SPI.setClockDivider(SPI_2XCLOCK_MASK);
+    SPI.setClockDivider(SPI_CLOCK_DIV2);
 
     acked = false;
     sending = false;
@@ -328,8 +328,8 @@ void rf24::tx(const void *data, uint8_t len, uint8_t max)
 /** Send register data - LSBFirst */
 void rf24::txlsbfirst(const void *data, uint8_t len)
 {
-    for (uint8_t ind=len-1; ind >= 0; ind--) {
-      transfer(((uint8_t *)data)[ind]);
+    for (uint8_t ind=0; ind<len; ind++) {
+      transfer(((uint8_t *)data)[len-ind-1]);
     }
 }
 
