@@ -878,7 +878,7 @@ boolean rf24::rxFifoAvailable()
 /** Return true if there is a packet available to read */
 boolean rf24::available() 
 {
-    return( ((readReg(STATUS) & (1 << RX_DR)) != 0) || rxFifoAvailable() );
+    return( ((readReg(STATUS) & (1 << RX_DR)) != 0) );
 }
 
 /** Return true if a packet becomes available to read within the time
