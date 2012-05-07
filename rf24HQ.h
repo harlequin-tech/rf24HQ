@@ -62,6 +62,10 @@
 #define RF24_STATE_PRX         0x05
 #define RF24_STATE_TEST        0x06
 
+#define RF24_IRQ_TXFAILED      0x01
+#define RF24_IRQ_TX            0x02
+#define RF24_IRQ_RX            0x04
+
 class RFDebug : public Print {
 public:
     RFDebug();
@@ -93,6 +97,8 @@ public:
     void writeReg(uint8_t reg);
     void writeReg(uint8_t reg, uint8_t value);
     void writeReg(uint8_t reg, const void *value, uint8_t size);
+    void setConfig(uint8_t value);
+    void setIrqMask(uint8_t intcodes);
 
     void setCRC8(void);
     void setCRC16(void);
@@ -122,6 +128,8 @@ public:
     void resetFailedSends(void);
 
     uint8_t chipState();
+    uint8_t getReason();
+    boolean getReason(uint8_t intcode);
     void standby();
     void enableTx();
     void continualTx();
@@ -153,7 +161,6 @@ public:
   private:
     RFDebug debug;	// debug print
 
-    void setConfig(uint8_t value);
     uint16_t _scrubDelay(uint16_t delay);
     uint8_t _convertSpeedToReg(uint32_t rfspd);
     uint32_t _convertRegToSpeed(uint8_t rfspdreg);
@@ -164,6 +171,7 @@ public:
     boolean sending;
     boolean autoAck;	/* Auto-ack feature enabled */
     uint8_t cfg_crc;  /* 2-byte CRC enabled */
+    uint8_t cfg_irq;  /* IRQ mask */
     uint8_t rfspeed;  /* Data rate; see RF24_SPEED_* defines */
     uint8_t rfpower;  /* Transmitter power; see RF24_POWER_* defines */
 

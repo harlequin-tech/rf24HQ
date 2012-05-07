@@ -57,6 +57,7 @@ rf24::rf24(uint8_t cePinSet, uint8_t csnPinSet, uint8_t channelSet, uint8_t size
     cePin = cePinSet;
     csnPin = csnPinSet;
     cfg_crc = (1<<EN_CRC);  // Defaults to CRC enabled, 8-bits only.
+    cfg_irq = 0;  // No conditions expressed on IRQ line
     rfpower = RF24_POWER_MINUS6DBM;
     rfspeed = RF24_SPEED_1MBPS;
 }
@@ -267,7 +268,16 @@ void rf24::txrx(uint8_t *txdata, uint8_t *rxdata, uint8_t len, uint8_t max)
 /** Set config register */
 void rf24::setConfig(uint8_t value)
 {
-    writeReg(CONFIG, cfg_crc | value);
+    // Note IRQ mask bits are active when 0 in the CONFIG register, so we have to invert cfg_irq
+    writeReg(CONFIG, cfg_crc | ((~cfg_irq & 0x07) << 4) | value);
+}
+
+/** Set IRQ mask for specified conditions
+ *  intcodes is any combination of RF24_IRQ_* #defines
+ */
+void rf24::setIrqMask(uint8_t intcodes)
+{
+    cfg_irq = intcodes & 0x07;
 }
 
 
@@ -677,6 +687,23 @@ uint8_t rf24::chipState()
 
     /* RX mode */
     return RF24_STATE_PRX;
+}
+
+/** Get the reason why the IRQ pin was triggered.
+ */
+uint8_t rf24::getReason()
+{
+    uint8_t reg;
+
+    reg = readReg(STATUS);
+    return ( (reg >> 4) & 0x07 );
+}
+
+/** Did the IRQ pin trigger for the reason(s) specified (in intcode)?
+ */
+boolean rf24::getReason(uint8_t intcode)
+{
+    return ( (getReason() & intcode) == intcode );
 }
 
 /** Disable transmit and receive. 900nA current draw. */
