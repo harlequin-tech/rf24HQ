@@ -61,12 +61,12 @@ rf24::rf24(uint8_t cePinSet, uint8_t csnPinSet, uint8_t channelSet, uint8_t size
     rfspeed = RF24_SPEED_1MBPS;
 }
 
-void rf24::chipEnable()
+void rf24::chipDisable()
 {
     digitalWrite(cePin,LOW);
 }
 
-void rf24::chipDisable()
+void rf24::chipEnable()
 {
     digitalWrite(cePin,HIGH);
 }
@@ -383,9 +383,9 @@ void rf24::setConfig(uint8_t value)
 /** Enable receive (disables transmit) */
 void rf24::enableRx()
 {
-    chipEnable();
-    setConfig((1<<PWR_UP) | (1<<PRIM_RX));
     chipDisable();
+    setConfig((1<<PWR_UP) | (1<<PRIM_RX));
+    chipEnable();
     writeReg(STATUS, (1 << TX_DS) | (1 << MAX_RT)); 
 }
 
@@ -434,13 +434,13 @@ void rf24::powerDown()
  */
 void rf24::setRxAddr(uint8_t id, const void *addr)
 {
-    chipEnable();
+    chipDisable();
     if (id < 2) {
 	writeReg(RX_ADDR_P0+id, (const uint8_t *)addr, RF24_ADDR_LEN);
     } else {
 	writeReg(RX_ADDR_P0+id, ((uint8_t *)addr)[4]);
     }
-    chipDisable();
+    chipEnable();
 }
 
 /** Set the transmit address. Also sets the receive address to the same 
@@ -513,7 +513,8 @@ void rf24::writeReg(uint8_t reg, const void *value, uint8_t size)
 {
     chipSelect();
     transfer(W_REGISTER | (REGISTER_MASK & reg));
-    txlsbfirst(value,size);  // Looks like all multi-byte registers require transmitting the LSB first...
+    //txlsbfirst(value,size);  // Looks like all multi-byte registers require transmitting the LSB first...
+    tx(value,size);  // Looks like all multi-byte registers require transmitting the LSB first...
     chipDeselect();
 }
 
@@ -563,7 +564,7 @@ void rf24::send(void *data, uint8_t size)
 {
     while (isSending(false));
 
-    chipEnable();
+    chipDisable();
     enableTx();
 
     writeReg(FLUSH_TX);
@@ -573,7 +574,7 @@ void rf24::send(void *data, uint8_t size)
     tx(data, packetSize, size);
     chipDeselect();
 
-    chipDisable();
+    chipEnable();
     sending = true;
 }
 
@@ -770,7 +771,7 @@ void rf24::scan(uint8_t *chans, uint8_t start, uint8_t count, uint8_t depth)
 	end = 125;
     }
 
-    chipEnable();
+    chipDisable();
 
     memset(chans, 0, count);
 
@@ -779,7 +780,7 @@ void rf24::scan(uint8_t *chans, uint8_t start, uint8_t count, uint8_t depth)
 	    writeReg(RF24_RF_CH, chan);
 	    enableRx();
 	    delayMicroseconds(170);
-	    chipEnable();
+	    chipDisable();
 
 	    if (readReg(RF24_RPD) & 0x01) {
 	        chans[chan]++;
