@@ -114,6 +114,7 @@ public:
     void tx(const void *data, uint8_t len, uint8_t max=RF24_MAX_SIZE);
     void txlsbfirst(const void *data, uint8_t len);
     void rx(void *data, uint8_t len, uint8_t max=RF24_MAX_SIZE);
+    void rxlsbfirst(void *data, uint8_t len, uint8_t max=RF24_MAX_SIZE);
     void txrx(uint8_t *data, uint8_t *in, uint8_t len, uint8_t max=RF24_MAX_SIZE);
 
     void send(void *data, uint8_t size=RF24_MAX_SIZE);

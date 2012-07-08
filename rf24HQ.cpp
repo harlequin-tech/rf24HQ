@@ -328,8 +328,9 @@ void rf24::tx(const void *data, uint8_t len, uint8_t max)
 /** Send register data - LSBFirst */
 void rf24::txlsbfirst(const void *data, uint8_t len)
 {
-    for (uint8_t ind=0; ind<len; ind++) {
-      transfer(((uint8_t *)data)[len-ind-1]);
+    int8_t ind=len-1; 
+    while (ind >= 0) {
+	transfer(((uint8_t *)data)[ind--]);
     }
 }
 
@@ -347,6 +348,20 @@ void rf24::rx(void *data, uint8_t len, uint8_t max)
 	} else {
 	    transfer(0);
 	}
+    }
+}
+
+void rf24::rxlsbfirst(void *data, uint8_t len, uint8_t max)
+{
+    int8_t ind;
+    if (max < len) {
+	ind = max-1;
+    } else {
+	ind = len-1;
+    }
+
+    while (ind >= 0) {
+	((uint8_t *)data)[ind--] = transfer(0);
     }
 }
 
@@ -468,6 +483,7 @@ void rf24::readReg(uint8_t reg, void *value, uint8_t size)
 {
     chipSelect();
     transfer(R_REGISTER | (REGISTER_MASK & reg));
+    //rxlsbfirst(value,size);
     rx(value,size);
     chipDeselect();
 }
