@@ -30,6 +30,8 @@
 #include <Arduino.h>
 #include <avr/pgmspace.h>
 
+#include <Stream.h>
+#include <Print.h>
 #include <nRF24L01.h>
 
 #define RF24_CONFIG      0x00
@@ -77,8 +79,11 @@ public:
 
     void setRxAddr(uint8_t id, const void *addr);
     void setTxAddr(const void *addr);
+    char *getRxAddr(char *addr);
+    char *getTxAddr(char *addr);
     void setPacketSize(uint8_t size);
     uint8_t getPacketSize();
+    void setMaxChannel(uint8_t chan);
     void setChannel(uint8_t chan);
     uint8_t getChannel(void);
     void setCRC8(void);
@@ -93,6 +98,7 @@ public:
     char* getSpeedString(char *buf);
     uint8_t getPowerReg(void);
     char* getPowerString(char *buf);
+    void setTxPower(int8_t dBm);
     uint8_t getRetransmits(void);
     uint8_t getFailedSends(void);
     void resetFailedSends(void);
@@ -104,7 +110,8 @@ public:
     void writeReg(uint8_t reg, const void *value, uint8_t size);
 
     void flushRx();
-    void enableRx();
+    void flushTx();
+    void enableRx(bool force=false);
     void enableTx();
     void powerDown();
     void enableAck(uint16_t delay, uint8_t retry);
@@ -117,16 +124,20 @@ public:
     void rxlsbfirst(void *data, uint8_t len, uint8_t max=RF24_MAX_SIZE);
     void txrx(uint8_t *data, uint8_t *in, uint8_t len, uint8_t max=RF24_MAX_SIZE);
 
-    void send(void *data, uint8_t size=RF24_MAX_SIZE);
+    bool send(void *data, uint8_t size=RF24_MAX_SIZE, bool blocking=false, uint16_t timeout=100);
     void read(void *data, uint8_t size=RF24_MAX_SIZE);
     boolean sendAndRead(void *msg, uint8_t size=RF24_MAX_SIZE, uint32_t timeout=100);
+    void resend();
 
     boolean rxFifoAvailable();
+    boolean txFifoEmpty();
     boolean available();
     boolean available(uint32_t timeout);
     boolean isSending(bool enableReceive=true);
     boolean gotAck();
-
+    boolean txFull();
+    uint8_t getTxRetries();
+    uint8_t getTxLoss(bool clear=true);
 
     void scan(uint8_t *chans, uint8_t start=0, uint8_t count=125, uint8_t depth=128);
     void setHandler(void (*rfHandler)(void *msg, uint8_t size), void *msg, uint8_t size);
@@ -136,8 +147,12 @@ public:
     void dumpRegisters(void);
     boolean isAlive(void);
 
+    uint8_t getAverageTxSize();
+
     uint8_t cePin;
     uint8_t csnPin;
+    uint32_t txByteCount;
+    uint32_t txCount;
   private:
     RFDebug debug;	// debug print
 
@@ -145,6 +160,9 @@ public:
     uint16_t _scrubDelay(uint16_t delay);
     uint8_t _convertSpeedToReg(uint32_t rfspd);
     uint32_t _convertRegToSpeed(uint8_t rfspdreg);
+
+    void setPower(uint8_t value);
+    void setCRC(uint8_t value);
 
     uint8_t channel;
     uint8_t packetSize;
@@ -154,38 +172,14 @@ public:
     uint8_t cfg_crc;  /* 2-byte CRC enabled */
     uint8_t rfspeed;  /* Data rate; see RF24_SPEED_* defines */
     uint8_t rfpower;  /* Transmitter power; see RF24_POWER_* defines */
+    bool txEnabled;
+    bool rxEnabled;
 
     void (*handler)(void *msg, uint8_t size);
     void *handlerMsg;
     uint8_t handlerMsgSize;
+    uint8_t maxChan;	// Maximum supported channel
+    uint8_t config;
 };
 
-#define RFSTREAM_SIZE (RF24_MAX_SIZE-1)
-
-typedef struct {
-    uint8_t size;
-    uint8_t data[RF24_MAX_SIZE-1];
-} rfstream_buf_t;
-
-class RFStream : public Stream {
-public:
-    RFStream();
-    void begin(rf24 *rf, Print *debugPrint=NULL);
-    virtual size_t write(uint8_t byte);
-    virtual int read();
-    virtual int available();
-    virtual void flush();
-    virtual int peek();
-    void setFlushTime(uint16_t msecs);
-    using Print::write;
-    rf24 *rf;
-private:
-    RFDebug debug;
-    rfstream_buf_t txBuf;
-    rfstream_buf_t rxBuf;
-    uint8_t rxInd;
-    uint32_t lastWrite;
-    uint16_t flushTime;
-    bool sending;
-};
 #endif

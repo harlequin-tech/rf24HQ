@@ -56,9 +56,16 @@ rf24::rf24(uint8_t cePinSet, uint8_t csnPinSet, uint8_t channelSet, uint8_t size
     packetSize = size;
     cePin = cePinSet;
     csnPin = csnPinSet;
-    cfg_crc = (1<<EN_CRC);  // Defaults to CRC enabled, 8-bits only.
     rfpower = RF24_POWER_MINUS6DBM;
     rfspeed = RF24_SPEED_1MBPS;
+    txByteCount = 0;
+    txCount = 0;
+    txEnabled = false;
+    rxEnabled = false;
+    maxChan = 83;	// NZ, US, 2.483 GHz max allowed channel
+
+    /* Default to interrupts masked, CRC16 enabled, powered down */
+    config = 1<<MASK_RX_DR | 1<<MASK_TX_DS | 1<<MASK_MAX_RT | 1<<EN_CRC | 1<<CRCO;
 }
 
 void rf24::chipDisable()
@@ -69,6 +76,7 @@ void rf24::chipDisable()
 void rf24::chipEnable()
 {
     digitalWrite(cePin,HIGH);
+    delayMicroseconds(10);  // 10us minimum Thce
 }
 
 void rf24::chipSelect()
@@ -103,6 +111,10 @@ boolean rf24::begin(uint32_t dataRate, Print *debugPrint)
     acked = false;
     sending = false;
 
+    delay(100);		// 100ms power on reset
+    powerDown();
+
+    writeReg(CONFIG, config);
     setChannel(channel);
     setPacketSize(packetSize);
     setSpeed(dataRate);
@@ -114,9 +126,14 @@ boolean rf24::begin(uint32_t dataRate, Print *debugPrint)
 	return false;
     }
 
+    writeReg(STATUS, (1 << RX_DR) | (1 << TX_DS) | (1 << MAX_RT)); 
+
     // Start receiver 
     enableRx();
+
+    // clear out any old packets 
     flushRx();
+    flushTx();
 
     return true;
 }
@@ -144,26 +161,31 @@ void rf24::setPacketSize(uint8_t size)
     writeReg(RX_PW_P4, packetSize);
     writeReg(RX_PW_P5, packetSize);
 }
-	
+
+void rf24::setCRC(uint8_t value)
+{
+    config = (config & ((1 << CRCO) | (1 << EN_CRC))) | (value & ((1 << CRCO) | (1 << EN_CRC)));
+    writeReg(CONFIG, config);
+}
 
 void rf24::setCRC8()
 {
-    cfg_crc &= ~(1 << CRCO);
+    setCRC(1 << EN_CRC);
 }
 
 void rf24::setCRC16()
 {
-    cfg_crc = 1 << CRCO;
+    setCRC(1 << EN_CRC | 1 << CRCO);
 }
 
 void rf24::setCRCOn()
 {
-    cfg_crc |= 1 << EN_CRC;
+    setCRC(1 << EN_CRC);
 }
 
 void rf24::setCRCOff()
 {
-    cfg_crc &= ~(1 << EN_CRC);
+    setCRC(0);
 }
 
 uint8_t rf24::_convertSpeedToReg(uint32_t rfspd)
@@ -303,6 +325,21 @@ char* rf24::getPowerString(char *buf)
     return(buf);
 }
 
+/** Set the transmit power level
+ * @param dBm power level. Valid values are -18, -12, -6, and 0. Setting will be rounded down to nearest. */
+void rf24::setTxPower(int8_t dBm)
+{
+    if (dBm < -12) {
+        setPowerReg(RF24_POWER_MINUS18DBM);
+    } else if (dBm <= -6) {
+        setPowerReg(RF24_POWER_MINUS12DBM);
+    } else if (dBm <= 0) {
+        setPowerReg(RF24_POWER_MINUS6DBM);
+    } else {
+        setPowerReg(RF24_POWER_0DBM);
+    }
+}
+
 uint8_t rf24::transfer(uint8_t data)
 {
     return SPI.transfer(data);
@@ -389,19 +426,34 @@ void rf24::txrx(uint8_t *txdata, uint8_t *rxdata, uint8_t len, uint8_t max)
     }
 }
 
-/** Set config register */
-void rf24::setConfig(uint8_t value)
+/** Set TX or RX power state */
+void rf24::setPower(uint8_t value)
 {
-    writeReg(CONFIG, cfg_crc | value);
+    bool settle = ((config & (1<<PWR_UP)) == 0);
+    config = (config & ~(1<<PWR_UP | 1<<PRIM_RX)) | (value & (1<<PWR_UP | 1<<PRIM_RX));
+    writeReg(CONFIG, config);
+    if (settle) {
+	// note this could reduce as low as 1500 usecs if 
+	// the series inductance of the crystal is < 30mH
+	// <30mH -> 1500 us
+	// <60mH -> 3000 us
+	// <90mH -> 4500 us
+	delayMicroseconds(4500);   // tpd2stby - power down -> standby external crystal
+    }
 }
 
 /** Enable receive (disables transmit) */
-void rf24::enableRx()
+void rf24::enableRx(bool force)
 {
-    chipDisable();
-    setConfig((1<<PWR_UP) | (1<<PRIM_RX));
-    chipEnable();
-    writeReg(STATUS, (1 << TX_DS) | (1 << MAX_RT)); 
+    if (!rxEnabled || force) {
+	chipDisable();
+	setPower(1<<PWR_UP | 1<<PRIM_RX);
+	//delayMicroseconds(150);   // tpd2stby - power down -> standby
+	chipEnable();
+	delayMicroseconds(130);   // Tstby2a - minimum delay ("RX settling")
+	rxEnabled = true;
+	txEnabled = false;
+    }
 }
 
 /** Flush the receive buffers. All received data is discarded */
@@ -410,10 +462,22 @@ void rf24::flushRx()
     writeReg(FLUSH_RX);
 }
 
+/** Flush the transmit buffers. All pending tx data is discarded */
+void rf24::flushTx()
+{
+    writeReg(FLUSH_TX);
+}
+
+
 /** Enable transmit (disables receive) */
 void rf24::enableTx()
 {
-    setConfig(1<<PWR_UP);
+    if (!txEnabled) {
+	setPower(1<<PWR_UP);
+	delayMicroseconds(130);  // Tstby2a - Standby-to-Active minimum delay ("TX settling")
+	txEnabled = true;
+	rxEnabled = false;
+    }
 }
 
 /** Report # of retransmits since the last sent packet */
@@ -438,7 +502,9 @@ void rf24::resetFailedSends()
 /** Disable transmit and receive. 900nA current draw. */
 void rf24::powerDown()
 {
-    setConfig(0);
+    setPower(0);
+    rxEnabled = false;
+    txEnabled = false;
 }
 
 /** Set the receive address for a queue 
@@ -474,6 +540,20 @@ void rf24::setTxAddr(const void *addr)
     }
 }
 
+char *rf24::getTxAddr(char *addr)
+{
+    readReg(TX_ADDR, addr, RF24_ADDR_LEN);
+    addr[RF24_ADDR_LEN] = 0;
+    return addr;
+}
+
+char *rf24::getRxAddr(char *addr)
+{
+    readReg(RX_ADDR_P1, addr, RF24_ADDR_LEN);
+    addr[RF24_ADDR_LEN] = 0;
+    return addr;
+}
+
 /** Read the value of a multi-byte register.
  * @param reg The register to read
  * @param value pointer to a buffer to store the value
@@ -483,8 +563,7 @@ void rf24::readReg(uint8_t reg, void *value, uint8_t size)
 {
     chipSelect();
     transfer(R_REGISTER | (REGISTER_MASK & reg));
-    //rxlsbfirst(value,size);
-    rx(value,size);
+    rxlsbfirst(value,size);
     chipDeselect();
 }
 
@@ -529,8 +608,7 @@ void rf24::writeReg(uint8_t reg, const void *value, uint8_t size)
 {
     chipSelect();
     transfer(W_REGISTER | (REGISTER_MASK & reg));
-    //txlsbfirst(value,size);  // Looks like all multi-byte registers require transmitting the LSB first...
-    tx(value,size);  // Looks like all multi-byte registers require transmitting the LSB first...
+    txlsbfirst(value,size);
     chipDeselect();
 }
 
@@ -541,21 +619,47 @@ void rf24::writeReg(uint8_t reg, const void *value, uint8_t size)
  */
 boolean rf24::isSending(bool enableReceive)
 {
-    uint8_t status;
-
     if (!sending) {
         return false;
     }
 
-    status = readReg(STATUS);
-
-    if (status & ((1 << TX_DS) | (1 << MAX_RT))) {
-	acked = ((status & (1 << TX_DS)) != 0);
+    if (txFifoEmpty()) {
+	acked = ((readReg(STATUS) & (1 << TX_DS)) != 0);
 	sending = false;
+	writeReg(STATUS, (1 << TX_DS) | (1 << MAX_RT)); 
 	if (enableReceive) {
 	    enableRx();
 	}
 	return false;
+    } else {
+	uint8_t status = readReg(STATUS);
+
+	if (status & ((1 << TX_DS) | (1 << MAX_RT))) {
+	    if (!(status && (1<<MAX_RT))) {
+		debug.print(F("isSending: txFifo not empty, but STATUS=0x"));
+		debug.println(status,HEX);
+		flushTx();
+	    }
+	    acked = ((status & (1 << TX_DS)) != 0);
+	    sending = false;
+	    writeReg(STATUS, (1 << TX_DS) | (1 << MAX_RT)); 
+	    if (enableReceive) {
+		enableRx();
+	    }
+#ifdef DEBUG
+	    debug.print(F("isSending: txFifo not empty, acked="));
+	    debug.print(acked);
+	    debug.print(F(", CONFIG=0x"));
+	    debug.print(readReg(CONFIG),HEX);
+	    debug.print(F(", STATUS=0x"));
+	    debug.print(readReg(STATUS),HEX);
+	    debug.print(F(", OBSERVE_TX=0x"));
+	    debug.print(readReg(OBSERVE_TX),HEX);
+	    debug.print(F(", FIFO_STATUS=0x"));
+	    debug.println(readReg(FIFO_STATUS),HEX);
+#endif
+	    return false;
+	}
     }
 
     return true;
@@ -569,16 +673,55 @@ boolean rf24::gotAck()
     return acked;
 }
 
+/** Resend last failed transmission */
+void rf24::resend()
+{
+    chipEnable();
+    chipDisable();
+}
+
+uint8_t rf24::getTxRetries()
+{
+    return readReg(OBSERVE_TX) & 0xF;
+}
+
+uint8_t rf24::getTxLoss(bool clear)
+{
+    uint8_t loss = (readReg(OBSERVE_TX) >> 4) & 0xF;
+    if (clear) {
+	writeReg(RF_CH, channel);	// reset loss count
+    }
+
+    return loss;
+}
+
 /** Send a packet
  * @param data pointer to the data to send
  * @param size number of bytes to send
+ * @param blocking false for nonblocking, true to wait for ack
+ * @param timeout time out send if blocking and no ack in this many milliseconds
  * @note the packet will always contain packetSize bytes, 
  *       if size > packetSize then the data is truncated,
  *       if size < packetSize then the packet is padded with 0.
  */
-void rf24::send(void *data, uint8_t size) 
+bool rf24::send(void *data, uint8_t size, bool blocking, uint16_t timeout) 
 {
-    while (isSending(false));
+    if (isSending(false)) {
+	uint32_t start = millis();
+	bool time=false;
+	do {
+	    time = (millis() - start) > timeout;
+	} while (!time && isSending(false));
+
+	if (time) {
+	    debug.println(F("rf24::send() timed out on initial isSending check"));
+	    dumpRegisters();
+	    return false;
+	}
+	debug.print(F("rf24::send() delayed "));
+	debug.print(millis()-start);
+	debug.println(F(" msecs due to isSending()"));
+    }
 
     chipDisable();
     enableTx();
@@ -592,8 +735,37 @@ void rf24::send(void *data, uint8_t size)
 
     chipEnable();
     sending = true;
+    acked = false;
+
+    txByteCount += size;
+    txCount++;
+
+    if (blocking) {
+	uint32_t start = millis();
+	bool time=false;
+
+	do {
+	    time = (millis() - start) > timeout;
+	} while (!time && isSending());
+
+	if (time) {
+	    debug.println(F("rf24::send() timed out"));
+	    return false;
+	}
+	return gotAck();
+    }
+
+    return false;
 }
 
+uint8_t rf24::getAverageTxSize()
+{
+    if (txCount > 0) {
+	return (uint8_t)(txByteCount / txCount);
+    } else {
+	return 0;
+    }
+}
 
 /** Read a packet
  *@param data Pointer to buffer to read packet into
@@ -625,10 +797,33 @@ boolean rf24::rxFifoAvailable()
     return ((readReg(FIFO_STATUS) & (1 << RX_EMPTY)) == 0);
 }
 
+boolean rf24::txFifoEmpty()
+{
+    return readReg(FIFO_STATUS) & (1 << TX_EMPTY);
+}
+
+
 /** Return true if there is a packet available to read */
 boolean rf24::available() 
 {
-    return ((readReg(STATUS) & (1 << RX_DR)) != 0) || rxFifoAvailable();
+    bool ready = ((readReg(STATUS) & (1 << RX_DR)) != 0) || rxFifoAvailable();
+
+#if 0
+    if (ready) {
+	debug.print(F("Available: STATUS=0x"));
+	debug.print(readReg(STATUS),HEX);
+	debug.print(F(" FIFO_STATUS=0x"));
+	debug.println(readReg(FIFO_STATUS),HEX);
+    }
+#endif
+
+    return ready;
+}
+
+boolean rf24::txFull()
+{
+
+    return (readReg(STATUS) & (1 << TX_FULL)) != 0;
 }
 
 /** Return true if a packet becomes available to read within the time
@@ -651,14 +846,24 @@ boolean rf24::available(uint32_t timeout)
 
 /** Set the RF channel. Sets the tx and rx frequency to 
  * 2.400 GHz + chan MHz.
- * @param chan The RF channel, 0 through 125.
+ * @param chan The RF channel, 0 through maxChan (device can support up to 125).
  */
 void rf24::setChannel(uint8_t chan)
 {
-    if (chan > 125) {
-	chan = 125;
+    if (chan > maxChan) {
+	chan = maxChan;
     }
     writeReg(RF_CH, chan);
+    channel = chan;
+}
+
+void rf24::setMaxChannel(uint8_t chan)
+{
+    if (chan > 125) {
+	maxChan = 125;
+    } else {
+	maxChan = chan;
+    }
 }
 
 uint8_t rf24::getChannel(void)
@@ -782,6 +987,7 @@ boolean rf24::sendAndRead(void *msg, uint8_t size, uint32_t timeout)
 void rf24::scan(uint8_t *chans, uint8_t start, uint8_t count, uint8_t depth)
 {
     uint8_t end = start+count;
+    uint8_t configuredChan = getChannel();
 
     if (end > 125) {
 	end = 125;
@@ -793,9 +999,9 @@ void rf24::scan(uint8_t *chans, uint8_t start, uint8_t count, uint8_t depth)
 
     for (uint8_t rep=0; rep<depth; rep++) {
         for (uint8_t chan=start; chan < end; chan++) {
-	    writeReg(RF24_RF_CH, chan);
+	    setChannel(chan);
 	    enableRx();
-	    delayMicroseconds(170);
+	    delayMicroseconds(40);
 	    chipDisable();
 
 	    if (readReg(RF24_RPD) & 0x01) {
@@ -803,6 +1009,8 @@ void rf24::scan(uint8_t *chans, uint8_t start, uint8_t count, uint8_t depth)
 	    }
 	}
     }
+
+    setChannel(configuredChan);
 }
 
 void rf24::loop()
@@ -935,97 +1143,3 @@ size_t RFDebug::write(uint8_t data)
     return 0;
 }
 
-RFStream::RFStream()
-{
-    rf = NULL;
-    rxInd = 0;
-    rxBuf.size = 0;
-    txBuf.size = 0;
-    flushTime = 10;	/* Default 10 msecs */
-    sending = false;
-    lastWrite = 0;
-}
-
-void RFStream::begin(rf24 *rfp, Print *debugPrint)
-{
-    rf = rfp;
-    debug.begin(debugPrint);
-}
-
-size_t RFStream::write(uint8_t data)
-{
-    txBuf.data[txBuf.size++] = data;
-    if (txBuf.size >= sizeof(txBuf.data)) {
-	rf->send(&txBuf, sizeof(txBuf));
-	sending = true;
-	txBuf.size = 0;
-    }
-    lastWrite = millis();
-
-    return 1;
-}
-
-int RFStream::read()
-{
-    int data=-1;
-
-    if (rxBuf.size) {
-	data = rxBuf.data[rxInd++];
-	if (rxInd >= rxBuf.size) {
-	    rxBuf.size = 0;
-	    rxInd = 0;
-	}
-    }
-
-    return data;
-}
-
-int RFStream::available()
-{
-    if (sending) {
-	if (!rf->isSending()) {
-	    sending = false;
-	    if (!rf->gotAck()) {
-		debug.println(F("RFStream: send failed"));
-	    }
-	}
-    }
-    if (txBuf.size && ((millis() - lastWrite) > flushTime)) {
-	/* Send what we have */
-	lastWrite = millis();
-	rf->send(&txBuf, sizeof(txBuf));
-	sending = true;
-	txBuf.size = 0;
-    }
-    if (rxBuf.size == 0) {
-	if (rf->available()) {
-	    rf->read(&rxBuf, sizeof(rxBuf));
-	    if (rxBuf.size > RF24_MAX_SIZE) {
-		/* Garbage */
-		rxBuf.size = 0;
-	    }
-	    rxInd = 0;
-	}
-    }
-    
-    return (int)rxBuf.size - (int)rxInd;
-}
-
-void RFStream::setFlushTime(uint16_t msecs)
-{
-    flushTime = msecs;
-}
-
-int RFStream::peek()
-{
-    if (rxBuf.size) {
-	return rxBuf.data[rxInd];
-    } else {
-	return -1;
-    }
-}
-
-void RFStream::flush()
-{
-    rxBuf.size = 0;
-}
