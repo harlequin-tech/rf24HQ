@@ -271,12 +271,14 @@ public:
     uint16_t _scrubDelay(uint16_t delay);
     uint8_t _convertSpeedToReg(uint32_t rfspd);
     uint32_t _convertRegToSpeed(uint8_t rfspdreg);
+    void chipEnable(void);
     void chipDisable(void);
     void chipPulse(void);
     void powerUp(bool rx=false);
 
     uint8_t chipEnablePin;
     uint8_t chipSelectPin;
+    bool chipEnabled;
     uint8_t channel;
     uint8_t packetSize;
     bool acked;

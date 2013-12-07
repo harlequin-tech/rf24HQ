@@ -41,6 +41,7 @@
 #define CHIP_DISABLE	LOW
 #define ENABLE_RX	true
 #define ENABLE_TX	false
+#define FORCE		true
 
 #define TX_ACTIVE(config) ((config & RF24_PWRSTATE_MASK) == RF24_PWR_UP)
 #define RX_ACTIVE(config) ((config & RF24_PWRSTATE_MASK) == (RF24_PWR_UP | RF24_PRIM_RX))
@@ -64,13 +65,21 @@ rf24::rf24(uint8_t cePin, uint8_t csnPin, uint8_t channelSet, uint8_t size)
 void rf24::chipDisable()
 {
     digitalWrite(chipEnablePin, CHIP_DISABLE);
+    chipEnabled = false;
 }
+
+void rf24::chipEnable()
+{
+    digitalWrite(chipEnablePin, CHIP_ENABLE);
+    chipEnabled = true;
+}
+
 
 void rf24::chipPulse()
 {
-    digitalWrite(chipEnablePin, CHIP_ENABLE);
+    chipEnable();
     delayMicroseconds(10);
-    digitalWrite(chipEnablePin, CHIP_DISABLE);
+    chipDisable();
 }
 
 /**
@@ -192,7 +201,7 @@ void rf24::setTxPower(int8_t dBm)
  */
 void rf24::powerUp(bool rx)
 {
-    bool powerChange = (config & RF24_PWR_UP) != 0;
+    bool powerChange = (config & RF24_PWR_UP) == 0;	// going from power down to power up?
     config = (config & ~RF24_PWRSTATE_MASK) | RF24_PWR_UP | (rx ? RF24_PRIM_RX : 0);
     writeReg(RF24_CONFIG, config);
     if (powerChange) {
@@ -214,12 +223,11 @@ void rf24::powerDown()
 /** Enable receive (disables transmit) */
 void rf24::enableRx(bool force)
 {
-    if (force || !RX_ACTIVE(config)) {
+    if (force || !RX_ACTIVE(config) || !chipEnabled) {
 	chipDisable();
 	powerUp(ENABLE_RX);
 	writeReg(RF24_STATUS, RF24_RX_DR | RF24_TX_DS | RF24_MAX_RT); 
-	delayMicroseconds(150);   // tpd2stby - power down -> standby
-	digitalWrite(chipEnablePin,CHIP_ENABLE);
+	chipEnable();
 	delayMicroseconds(130);   // Tstby2a - minimum delay ("RX settling")
     }
 }
@@ -254,14 +262,12 @@ void rf24::flushTx()
  */
 void rf24::setRxAddr(uint8_t id, const void *addr)
 {
-    chipDisable();
     if (id < 2) {
 	writeReg(RF24_RX_ADDR_P0+id, (const uint8_t *)addr, RF24_ADDR_LEN);
     } else {
 	writeReg(RF24_RX_ADDR_P0+id, ((uint8_t *)addr)[4]);
     }
     updateReg(RF24_EN_RXADDR, 1<<id, 1<<id);	// enable the receive pipe for the address
-    digitalWrite(chipEnablePin, CHIP_ENABLE);
 }
 
 /** Set the transmit address. Also sets the receive address to the same 
@@ -552,7 +558,7 @@ bool rf24::available()
     if (((readReg(RF24_STATUS) & RF24_RX_DR) != 0) || rxFifoAvailable()) {
 	return true;
     } else {
-	if (!RX_ACTIVE(config)) {
+	if (!RX_ACTIVE(config) || !chipEnabled) {
 	    // not currently receiving
 	    // check if transmitting still
 	    if (isSending()) {
@@ -690,6 +696,7 @@ void rf24::scan(uint8_t *chans, uint8_t start, uint8_t count, uint8_t depth, con
     powerDown();
 
     memset(chans, 0, count);
+    enableRx();
 
     for (uint8_t rep=0; rep<depth; rep++) {
 	if (ledPin < 255) {
