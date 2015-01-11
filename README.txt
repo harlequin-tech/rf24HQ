@@ -33,36 +33,7 @@ Receive a packet:
 	    rf.read(data, sizeof(data));
 	}
 
-Set up a stream:
-
-	rf24 rf(8,9,100,RF24_MAX_SIZE);
-	RFStream rfstream;
-
-	void setup()
-	{
-	    rf.begin();
-	    rfstream.begin(&rf);
-
-	    rf.setRxAddr(1, "addr1");
-	    rf.setTxAddr("addr2");
-	}
-	
-Send data via a stream:
-
-	rfstream.println("Hello World");
-	rfstream.println(42);
-	rfstream.println(F("Progmem string"));
-
-Receive data from a stream:
-
-	if (rfstream.available() > 0) {
-	    Serial.write(rfstream.read());
-	}
-
 Example sketches:
-	rfstream1.ino: simple streamer that connects two serial monitors
-                       together via two Arduinos and two rf modules.
-
 	rcscan.ino:    "Poor Man's 2.4GHz scanner". Scans the 2.4GHz channels
                        and displays a bar graph of approximate signal strengths.
 
