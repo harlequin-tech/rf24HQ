@@ -216,7 +216,7 @@ public:
     bool begin(uint32_t dataRate, Stream *debugPrint);
 
     void setRxAddr(uint8_t id, const void *addr);
-    void setTxAddr(const void *addr);
+    void setTxAddr(const void *addr, bool noAck=false);
     char *getRxAddr(char *addr);
     char *getTxAddr(char *addr);
     void setPacketSize(uint8_t size);
@@ -243,6 +243,7 @@ public:
     void enableRx(bool force=false);
     void enableTx(void);
     void powerDown(void);
+    void powerUp(bool rx=false);
     void enableAck(uint8_t retry=5, bool enableAutoTxAddr=true, uint16_t delay=0);
     void disableAck(void);
 
@@ -274,7 +275,6 @@ public:
     void chipEnable(void);
     void chipDisable(void);
     void chipPulse(void);
-    void powerUp(bool rx=false);
 
     uint8_t chipEnablePin;
     uint8_t chipSelectPin;

@@ -35,7 +35,7 @@ void setup()
 {
     Serial.begin(115200);
 
-    rf.begin((Print *)&Serial);
+    rf.begin(&Serial);
 
     rf.setTxAddr("test1");
     rf.setRxAddr(1, "serv1");

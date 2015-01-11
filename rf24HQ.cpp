@@ -274,10 +274,10 @@ void rf24::setRxAddr(uint8_t id, const void *addr)
  * to support the auto-ack feature.
  * @param addr pointer to the 5 byte address to set
  */
-void rf24::setTxAddr(const void *addr)
+void rf24::setTxAddr(const void *addr, bool noAck)
 {
     writeReg(RF24_TX_ADDR, (const uint8_t *)addr, RF24_ADDR_LEN);
-    if (autoAck && autoTxAddr) {
+    if (autoAck && autoTxAddr && !noAck) {
 	/* 
 	 * RX_ADDR_P0 is used for the auto ack feature, and 
 	 * needs to be the same as the TX address 
@@ -459,6 +459,16 @@ bool rf24::send(void *data, uint8_t size, uint8_t flags, uint16_t timeout)
 {
     uint8_t *dp = (uint8_t *)data;
     uint8_t pad = 0;
+
+#if 0
+    if (flags & RF24_NOACK) {
+	debug.println(F("send: NOACK"));
+    } else {
+	debug.println(F("send: ACK"));
+    }
+#endif
+
+
     if (isSending(false)) {
 	uint32_t start = millis();
 	while (isSending(false)) {
@@ -474,8 +484,6 @@ bool rf24::send(void *data, uint8_t size, uint8_t flags, uint16_t timeout)
 	debug.println(F(" msecs due to isSending()"));
     }
 
-    debug.println();
-
     chipDisable();
     enableTx();
 
@@ -484,10 +492,6 @@ bool rf24::send(void *data, uint8_t size, uint8_t flags, uint16_t timeout)
 	pad = 0;
     }
 
-    if (autoAck && (flags & RF24_NOACK)) {
-	// tell receiver not to ACK this packet
-	writeReg(RF24_W_TX_PAYLOAD_NOACK);
-    }
 
     digitalWrite(chipSelectPin, CHIP_SELECT);
     SPI.transfer(RF24_W_TX_PAYLOAD);
@@ -498,6 +502,11 @@ bool rf24::send(void *data, uint8_t size, uint8_t flags, uint16_t timeout)
 	SPI.transfer(0);
     }
     digitalWrite(chipSelectPin, CHIP_DESELECT);
+
+    if (autoAck && (flags & RF24_NOACK)) {
+	// tell receiver not to ACK this packet
+	writeReg(RF24_W_TX_PAYLOAD_NOACK);
+    }
 
     chipPulse();
     acked = false;
@@ -646,7 +655,7 @@ void rf24::enableAck(uint8_t retry, bool enableAutoTxAddr, uint16_t delay)
 
     writeReg(RF24_EN_AA, 0x3F); /* enable auto-ack */
     // delay is rounded up to nearest 250 microseconds
-    writeReg(RF24_SETUP_RETR, (((delay-1) / 250) & 0x0F) << 4 | (retry & 0x0F));
+    writeReg(RF24_SETUP_RETR, (uint8_t)(((delay-1) / 250) & 0x0F) << 4 | (retry & 0x0F));
     writeReg(RF24_FEATURE, RF24_EN_DYN_ACK);
 
     autoTxAddr = enableAutoTxAddr;
